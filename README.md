@@ -2,7 +2,7 @@
 
 Terraform code for AWS infrastructure.
 
-## Structure
+## Structure #
 
 ```
 ├── bootstrap/          # S3 state, DynamoDB lock, KMS
