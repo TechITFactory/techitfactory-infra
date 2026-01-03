@@ -8,9 +8,8 @@
 - [ ] Documentation
 
 ## Terraform Plan Output
-```
 <!-- Paste terraform plan output here -->
-```
+
 
 ## Checklist
 - [ ] `terraform fmt` passed
