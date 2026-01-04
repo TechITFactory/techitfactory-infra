@@ -1,0 +1,161 @@
+# =============================================================================
+# TERRAFORM CI WORKFLOW
+# =============================================================================
+#
+# PURPOSE:
+# Automates Terraform operations on pull requests and merges:
+# - On PR: Format check, init, validate, plan (with PR comment)
+# - On merge: Same checks (ready for apply in later iterations)
+#
+# AUTHENTICATION:
+# Uses OIDC to assume AWS role - no static credentials stored in GitHub!
+#
+# TRIGGERS:
+# - Push to main branch
+# - Pull request targeting main branch
+# =============================================================================
+
+name: Terraform CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Environment variables used across all jobs
+env:
+  AWS_REGION: ap-south-1
+  TF_VERSION: 1.6.0
+
+# =============================================================================
+# PERMISSIONS
+# =============================================================================
+# CRITICAL: These permissions are required for OIDC authentication
+# - id-token: write  → Allows requesting JWT from GitHub's OIDC provider
+# - contents: read   → Allows checking out code
+# - pull-requests: write → Allows commenting on PRs
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ===========================================================================
+  # TERRAFORM JOB
+  # ===========================================================================
+  terraform:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+
+    # Default working directory for all run steps
+    defaults:
+      run:
+        working-directory: bootstrap
+
+    steps:
+      # -----------------------------------------------------------------------
+      # CHECKOUT CODE
+      # -----------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # CONFIGURE AWS CREDENTIALS (OIDC)
+      # -----------------------------------------------------------------------
+      # This step:
+      # 1. Requests a JWT token from GitHub's OIDC provider
+      # 2. Exchanges the JWT for temporary AWS credentials
+      # 3. Sets AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN
+      #
+      # The role-to-assume ARN comes from GitHub Secrets (set after bootstrap)
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # -----------------------------------------------------------------------
+      # SETUP TERRAFORM
+      # -----------------------------------------------------------------------
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # -----------------------------------------------------------------------
+      # TERRAFORM FORMAT CHECK
+      # -----------------------------------------------------------------------
+      # Ensures code follows standard Terraform formatting
+      # continue-on-error: true → Don't fail workflow, just report
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      # -----------------------------------------------------------------------
+      # TERRAFORM INIT
+      # -----------------------------------------------------------------------
+      # Downloads providers and initializes backend
+      - name: Terraform Init
+        id: init
+        run: terraform init
+
+      # -----------------------------------------------------------------------
+      # TERRAFORM VALIDATE
+      # -----------------------------------------------------------------------
+      # Checks syntax and internal consistency
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+
+      # -----------------------------------------------------------------------
+      # TERRAFORM PLAN
+      # -----------------------------------------------------------------------
+      # Shows what changes would be made
+      # Only runs on pull requests (not on push to main)
+      - name: Terraform Plan
+        id: plan
+        if: github.event_name == 'pull_request'
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+
+      # -----------------------------------------------------------------------
+      # COMMENT PR WITH RESULTS
+      # -----------------------------------------------------------------------
+      # Posts a summary of all Terraform checks to the PR
+      # Makes it easy to review infrastructure changes
+      - name: Comment PR with Plan
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const output = `## Terraform CI Results
+
+            | Step | Status |
+            |------|--------|
+            | 🖌  Format | \`${{ steps.fmt.outcome }}\` |
+            | ⚙️  Init | \`${{ steps.init.outcome }}\` |
+            | 🤖 Validate | \`${{ steps.validate.outcome }}\` |
+            | 📖 Plan | \`${{ steps.plan.outcome }}\` |
+
+            *Pushed by: @${{ github.actor }}*
+            *Action: \`${{ github.event_name }}\`*
+
+            > 💡 Review the Actions tab for full plan output`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      # -----------------------------------------------------------------------
+      # FAIL IF PLAN FAILED
+      # -----------------------------------------------------------------------
+      # Ensures the workflow fails if plan had errors
+      - name: Terraform Plan Status
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
