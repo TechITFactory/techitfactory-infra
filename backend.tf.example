@@ -1,0 +1,12 @@
+# Copy this file as backend.tf in environments/dev or environments/prod
+# Replace <BUCKET_NAME> and <DYNAMODB_TABLE> with outputs from bootstrap
+
+terraform {
+  backend "s3" {
+    bucket         = "<BUCKET_NAME>"
+    key            = "environments/dev/terraform.tfstate"  # Change per environment
+    region         = "ap-south-1"
+    encrypt        = true
+    dynamodb_table = "<DYNAMODB_TABLE>"
+  }
+}
