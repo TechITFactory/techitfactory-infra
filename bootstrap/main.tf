@@ -45,6 +45,11 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    # TLS Provider - for fetching GitHub OIDC certificate
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 

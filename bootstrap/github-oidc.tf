@@ -21,17 +21,9 @@
 # - aws_iam_openid_connect_provider: Trust relationship with GitHub
 # - aws_iam_role: Role that GitHub Actions assumes
 # - aws_iam_role_policy: Permissions for Terraform operations
+#
+# NOTE: The TLS provider is defined in main.tf's required_providers block
 # =============================================================================
-
-terraform {
-  required_providers {
-    # TLS provider - for fetching GitHub's OIDC certificate thumbprint
-    tls = {
-      source  = "hashicorp/tls"
-      version = "~> 4.0"
-    }
-  }
-}
 
 # -----------------------------------------------------------------------------
 # GITHUB OIDC PROVIDER
