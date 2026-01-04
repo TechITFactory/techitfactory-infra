@@ -23,7 +23,7 @@
 output "state_bucket_name" {
   description = "S3 bucket for Terraform state"
   value       = aws_s3_bucket.terraform_state.id
-  
+
   # USAGE: Copy this value to backend.tf in your environment configs:
   # bucket = "<this-value>"
 }
@@ -31,7 +31,7 @@ output "state_bucket_name" {
 output "state_bucket_arn" {
   description = "S3 bucket ARN"
   value       = aws_s3_bucket.terraform_state.arn
-  
+
   # USAGE: Use this ARN when creating IAM policies that need S3 access
   # For example, the GitHub Actions OIDC role needs this
 }
@@ -44,7 +44,7 @@ output "state_bucket_arn" {
 output "lock_table_name" {
   description = "DynamoDB table for state locking"
   value       = aws_dynamodb_table.terraform_lock.name
-  
+
   # USAGE: Copy this value to backend.tf in your environment configs:
   # dynamodb_table = "<this-value>"
 }
@@ -57,7 +57,7 @@ output "lock_table_name" {
 output "kms_key_arn" {
   description = "KMS key ARN for state encryption"
   value       = aws_kms_key.terraform_state.arn
-  
+
   # USAGE: Use this in backend.tf for explicit encryption:
   # kms_key_id = "<this-value>"
   # Also needed for IAM policies granting decrypt permissions
@@ -66,7 +66,7 @@ output "kms_key_arn" {
 output "kms_key_alias" {
   description = "KMS key alias"
   value       = aws_kms_alias.terraform_state.name
-  
+
   # USAGE: Human-readable key name for documentation
   # Can also be used in policies: alias/techitfactory-tfstate
 }
@@ -79,7 +79,7 @@ output "kms_key_alias" {
 
 output "backend_config" {
   description = "Backend configuration for other Terraform configs"
-  value = <<-EOT
+  value       = <<-EOT
     # =================================================================
     # COPY THIS TO: environments/dev/backend.tf (or prod)
     # =================================================================
@@ -94,7 +94,7 @@ output "backend_config" {
       }
     }
   EOT
-  
+
   # USAGE:
   # 1. Run: terraform output backend_config
   # 2. Copy the output to environments/dev/backend.tf

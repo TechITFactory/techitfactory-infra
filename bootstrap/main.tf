@@ -32,13 +32,13 @@
 # We pin versions to avoid unexpected breaking changes
 
 terraform {
-  required_version = ">= 1.6.0"  # Minimum Terraform version required
+  required_version = ">= 1.6.0" # Minimum Terraform version required
 
   required_providers {
     # AWS Provider - for creating AWS resources
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"  # Use version 5.x (latest stable)
+      version = "~> 5.0" # Use version 5.x (latest stable)
     }
     # Random Provider - for generating unique bucket names
     random = {
@@ -56,7 +56,7 @@ terraform {
 # Default tags are applied to ALL resources created by this provider
 
 provider "aws" {
-  region = var.aws_region  # Mumbai region (ap-south-1)
+  region = var.aws_region # Mumbai region (ap-south-1)
 
   # These tags will be automatically added to every resource
   # Helps with cost tracking and resource identification
@@ -73,7 +73,7 @@ provider "aws" {
 # Example: techitfactory-tfstate-a1b2c3d4
 
 resource "random_id" "bucket_suffix" {
-  byte_length = 4  # Produces 8 hex characters (e.g., "a1b2c3d4")
+  byte_length = 4 # Produces 8 hex characters (e.g., "a1b2c3d4")
 }
 
 # -----------------------------------------------------------------------------
@@ -85,9 +85,9 @@ resource "random_id" "bucket_suffix" {
 locals {
   # Bucket name: techitfactory-tfstate-<random>
   bucket_name = "${var.project_name}-tfstate-${random_id.bucket_suffix.hex}"
-  
+
   # DynamoDB table name: techitfactory-tflock
-  table_name  = "${var.project_name}-tflock"
+  table_name = "${var.project_name}-tflock"
 }
 
 # =============================================================================
@@ -104,8 +104,8 @@ locals {
 
 resource "aws_kms_key" "terraform_state" {
   description             = "KMS key for Terraform state encryption"
-  deletion_window_in_days = 7               # Wait 7 days before permanent deletion
-  enable_key_rotation     = true            # Auto-rotate key annually
+  deletion_window_in_days = 7    # Wait 7 days before permanent deletion
+  enable_key_rotation     = true # Auto-rotate key annually
 
   tags = {
     Name = "${var.project_name}-tfstate-key"
@@ -132,13 +132,13 @@ resource "aws_kms_alias" "terraform_state" {
 # Losing this bucket = losing track of what Terraform manages
 
 resource "aws_s3_bucket" "terraform_state" {
-  bucket = local.bucket_name  # techitfactory-tfstate-<random>
+  bucket = local.bucket_name # techitfactory-tfstate-<random>
 
   # LIFECYCLE PROTECTION
   # Set to 'true' in production to prevent accidental deletion
   # Set to 'false' for learning/course so we can easily cleanup
   lifecycle {
-    prevent_destroy = false  # CHANGE TO true IN PRODUCTION!
+    prevent_destroy = false # CHANGE TO true IN PRODUCTION!
   }
 
   tags = {
@@ -169,10 +169,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" 
 
   rule {
     apply_server_side_encryption_by_default {
-      kms_master_key_id = aws_kms_key.terraform_state.arn  # Our KMS key
-      sse_algorithm     = "aws:kms"                        # Use KMS encryption
+      kms_master_key_id = aws_kms_key.terraform_state.arn # Our KMS key
+      sse_algorithm     = "aws:kms"                       # Use KMS encryption
     }
-    bucket_key_enabled = true  # Reduces KMS API calls (cost optimization)
+    bucket_key_enabled = true # Reduces KMS API calls (cost optimization)
   }
 }
 
@@ -183,10 +183,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" 
 resource "aws_s3_bucket_public_access_block" "terraform_state" {
   bucket = aws_s3_bucket.terraform_state.id
 
-  block_public_acls       = true  # Block public ACLs
-  block_public_policy     = true  # Block public bucket policies
-  ignore_public_acls      = true  # Ignore any public ACLs
-  restrict_public_buckets = true  # Restrict public bucket policies
+  block_public_acls       = true # Block public ACLs
+  block_public_policy     = true # Block public bucket policies
+  ignore_public_acls      = true # Ignore any public ACLs
+  restrict_public_buckets = true # Restrict public bucket policies
 }
 
 # =============================================================================
@@ -207,14 +207,14 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
 # - For Terraform usage, this is essentially free (~$0/month)
 
 resource "aws_dynamodb_table" "terraform_lock" {
-  name         = local.table_name      # techitfactory-tflock
-  billing_mode = "PAY_PER_REQUEST"     # No provisioned capacity, pay per use
-  hash_key     = "LockID"              # Primary key used by Terraform
+  name         = local.table_name  # techitfactory-tflock
+  billing_mode = "PAY_PER_REQUEST" # No provisioned capacity, pay per use
+  hash_key     = "LockID"          # Primary key used by Terraform
 
   # The LockID attribute - Terraform uses this to identify which state is locked
   attribute {
     name = "LockID"
-    type = "S"  # String type
+    type = "S" # String type
   }
 
   tags = {
