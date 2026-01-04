@@ -1,12 +1,66 @@
-# Copy this file as backend.tf in environments/dev or environments/prod
-# Replace <BUCKET_NAME> and <DYNAMODB_TABLE> with outputs from bootstrap
+# =============================================================================
+# BACKEND CONFIGURATION TEMPLATE
+# =============================================================================
+#
+# PURPOSE:
+# This is a TEMPLATE file showing how to configure Terraform to use the
+# remote state backend created by the bootstrap configuration.
+#
+# HOW TO USE:
+# 1. Run bootstrap: cd bootstrap && terraform apply
+# 2. Get outputs: terraform output
+# 3. Copy this file to your environment: cp backend.tf.example environments/dev/backend.tf
+# 4. Replace placeholder values with actual bootstrap outputs
+# 5. Run: cd environments/dev && terraform init
+#
+# WHY REMOTE BACKEND?
+# - State is stored centrally in S3 (not on your laptop)
+# - State is locked during operations (prevents concurrent modifications)
+# - State is encrypted at rest (security)
+# - State is versioned (can recover from mistakes)
+#
+# =============================================================================
 
 terraform {
   backend "s3" {
-    bucket         = "<BUCKET_NAME>"
-    key            = "environments/dev/terraform.tfstate"  # Change per environment
-    region         = "ap-south-1"
-    encrypt        = true
+    # -------------------------------------------------------------------------
+    # S3 BUCKET NAME
+    # -------------------------------------------------------------------------
+    # Get this from: terraform output state_bucket_name
+    # Example: techitfactory-tfstate-a1b2c3d4
+    bucket = "<BUCKET_NAME>"
+
+    # -------------------------------------------------------------------------
+    # STATE FILE PATH
+    # -------------------------------------------------------------------------
+    # Each environment should have a UNIQUE key to avoid conflicts
+    # Convention: environments/<env>/terraform.tfstate
+    # 
+    # Examples:
+    # - Dev:  "environments/dev/terraform.tfstate"
+    # - Prod: "environments/prod/terraform.tfstate"
+    key = "environments/dev/terraform.tfstate"
+
+    # -------------------------------------------------------------------------
+    # AWS REGION
+    # -------------------------------------------------------------------------
+    # Must match where the S3 bucket was created
+    region = "ap-south-1"
+
+    # -------------------------------------------------------------------------
+    # ENCRYPTION
+    # -------------------------------------------------------------------------
+    # Enable server-side encryption for state file
+    # State may contain sensitive values (passwords, keys, etc.)
+    encrypt = true
+
+    # -------------------------------------------------------------------------
+    # STATE LOCKING TABLE
+    # -------------------------------------------------------------------------
+    # Get this from: terraform output lock_table_name
+    # Example: techitfactory-tflock
+    # 
+    # This prevents two people from running 'terraform apply' simultaneously
     dynamodb_table = "<DYNAMODB_TABLE>"
   }
 }
