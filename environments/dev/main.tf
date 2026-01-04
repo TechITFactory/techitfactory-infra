@@ -188,7 +188,8 @@ module "ecr" {
     "api-gateway",
     "user-service",
     "order-service",
-    "product-service"
+    "product-service",
+    "cart-service"
   ]
 
   lifecycle_policy_count = 30
