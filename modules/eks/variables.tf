@@ -168,3 +168,14 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "enable_alb_controller" {
+  description = "Create IRSA role for AWS Load Balancer Controller"
+  type        = bool
+  default     = true
+
+  # WHY ALB CONTROLLER?
+  # - Provisions ALB/NLB via Kubernetes Ingress
+  # - Required for production-grade load balancing
+}
+
