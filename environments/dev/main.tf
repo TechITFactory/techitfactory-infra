@@ -2,30 +2,30 @@
 # DEV ENVIRONMENT - MAIN CONFIGURATION
 # =============================================================================
 #
-# COST ESTIMATE:
-# - VPC (NAT Gateway): ~$32/month
-# - EKS Control Plane: ~$72/month
-# - EKS Nodes (2x t3.medium): ~$60/month
-# - CloudWatch Logs: ~$5/month
-# - Total: ~$170/month
+# DEPLOYMENT PHASES:
+# - Story 3.1: VPC only (~$32/month)
+# - Story 4.1: Add EKS (+$132/month)
+# - Story 6.1: Add ECR (~free, storage costs only)
+#
+# CURRENT PHASE: VPC only
 # =============================================================================
 
 terraform {
   required_version = ">= 1.6.0"
 
   # -------------------------------------------------------------------------
-  # REMOTE BACKEND
+  # REMOTE BACKEND - UNCOMMENT AND UPDATE AFTER BOOTSTRAP
   # -------------------------------------------------------------------------
-  # Uncomment after bootstrap is applied
   # Get values from: cd ../bootstrap && terraform output
-  #
-  # backend "s3" {
-  #   bucket         = "<BUCKET_NAME_FROM_BOOTSTRAP>"
-  #   key            = "environments/dev/terraform.tfstate"
-  #   region         = "ap-south-1"
-  #   encrypt        = true
-  #   dynamodb_table = "<TABLE_NAME_FROM_BOOTSTRAP>"
-  # }
+  /*
+  backend "s3" {
+    bucket         = "techitfactory-terraform-state-ACCOUNT_ID"
+    key            = "environments/dev/terraform.tfstate"
+    region         = "ap-south-1"
+    encrypt        = true
+    dynamodb_table = "techitfactory-terraform-locks"
+  }
+  */
 
   required_providers {
     aws = {
@@ -65,7 +65,7 @@ locals {
 }
 
 # =============================================================================
-# VPC MODULE
+# VPC MODULE (Story 3.1)
 # =============================================================================
 
 module "vpc" {
@@ -78,16 +78,17 @@ module "vpc" {
   enable_s3_endpoint = true # FREE - reduces NAT costs
 
   # OPTIONAL: Interface endpoints (cost ~$7.50/month each)
-  # Uncomment these for production or when you want traffic to stay in AWS network:
+  # Uncomment these for production:
   # enable_ecr_endpoints = true  # ~$15/month (2 endpoints)
   # enable_logs_endpoint = true  # ~$7.50/month
   # enable_sts_endpoint  = true  # ~$7.50/month
 }
 
 # =============================================================================
-# EKS MODULE
+# EKS MODULE (Story 4.1) - UNCOMMENT WHEN READY
 # =============================================================================
 
+/*
 module "eks" {
   source = "../../modules/eks"
 
@@ -112,77 +113,13 @@ module "eks" {
   enable_cluster_autoscaler = true
   enable_alb_controller     = true
 }
+*/
 
 # =============================================================================
-# OUTPUTS
+# ECR MODULE (Story 6.1) - UNCOMMENT WHEN READY
 # =============================================================================
 
-# VPC Outputs
-output "vpc_id" {
-  description = "VPC ID"
-  value       = module.vpc.vpc_id
-}
-
-output "vpc_cidr" {
-  description = "VPC CIDR block"
-  value       = module.vpc.vpc_cidr
-}
-
-output "private_subnet_ids" {
-  description = "Private subnet IDs"
-  value       = module.vpc.private_subnet_ids
-}
-
-output "public_subnet_ids" {
-  description = "Public subnet IDs"
-  value       = module.vpc.public_subnet_ids
-}
-
-output "nat_public_ips" {
-  description = "NAT Gateway public IPs"
-  value       = module.vpc.nat_public_ips
-}
-
-# EKS Outputs
-output "cluster_name" {
-  description = "EKS cluster name"
-  value       = module.eks.cluster_name
-}
-
-output "cluster_endpoint" {
-  description = "EKS cluster endpoint"
-  value       = module.eks.cluster_endpoint
-}
-
-output "cluster_version" {
-  description = "Kubernetes version"
-  value       = module.eks.cluster_version
-}
-
-output "kubeconfig_command" {
-  description = "Run this to configure kubectl"
-  value       = module.eks.kubeconfig_command
-}
-
-output "cluster_autoscaler_role_arn" {
-  description = "IAM role ARN for Cluster Autoscaler"
-  value       = module.eks.cluster_autoscaler_role_arn
-}
-
-output "oidc_provider_arn" {
-  description = "OIDC provider ARN for IRSA"
-  value       = module.eks.oidc_provider_arn
-}
-
-output "alb_controller_role_arn" {
-  description = "IAM role ARN for AWS Load Balancer Controller"
-  value       = module.eks.alb_controller_role_arn
-}
-
-# =============================================================================
-# ECR MODULE
-# =============================================================================
-
+/*
 module "ecr" {
   source = "../../modules/ecr"
 
@@ -201,15 +138,4 @@ module "ecr" {
   lifecycle_policy_count = 30
   scan_on_push           = true
 }
-
-# ECR Outputs
-output "ecr_repository_urls" {
-  description = "ECR repository URLs"
-  value       = module.ecr.repository_urls
-}
-
-output "ecr_login_command" {
-  description = "Command to login to ECR"
-  value       = module.ecr.login_command
-}
-
+*/
