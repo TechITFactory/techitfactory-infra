@@ -17,15 +17,14 @@ terraform {
   # REMOTE BACKEND - UNCOMMENT AND UPDATE AFTER BOOTSTRAP
   # -------------------------------------------------------------------------
   # Get values from: cd ../bootstrap && terraform output
-  /*
+
   backend "s3" {
-    bucket         = "techitfactory-terraform-state-ACCOUNT_ID"
+    bucket         = "techitfactory-tfstate-8bf605bd"
     key            = "environments/dev/terraform.tfstate"
     region         = "ap-south-1"
     encrypt        = true
-    dynamodb_table = "techitfactory-terraform-locks"
+    dynamodb_table = "techitfactory-tflock"
   }
-  */
 
   required_providers {
     aws = {
