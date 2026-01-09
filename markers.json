@@ -1,0 +1,8 @@
+{
+    "Objects": [
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "null"
+        }
+    ]
+}
