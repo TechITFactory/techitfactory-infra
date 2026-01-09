@@ -1,0 +1,94 @@
+# =============================================================================
+# KUBERNETES RBAC FOR SSO GROUPS
+# =============================================================================
+#
+# Apply with: kubectl apply -f k8s-manifests/rbac/
+#
+# This creates:
+# - dev namespace (for developers)
+# - developer-readonly ClusterRole (view-only access)
+# - namespace-admin Role (full access in dev namespace)
+# - RoleBindings for SSO groups
+# =============================================================================
+
+---
+# Namespace for developers
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    environment: development
+    managed-by: terraform
+
+---
+# ClusterRole: Read-only access across cluster
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: developer-readonly
+rules:
+# Core resources - read only
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "namespaces", "events", "persistentvolumeclaims", "endpoints"]
+  verbs: ["get", "list", "watch"]
+# Workload resources - read only
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+  verbs: ["get", "list", "watch"]
+# Logs - essential for debugging
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+# Networking - read only
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses", "networkpolicies"]
+  verbs: ["get", "list", "watch"]
+# Batch jobs - read only
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding: developers-readonly group → developer-readonly role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: developers-readonly-binding
+subjects:
+- kind: Group
+  name: developers-readonly
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: developer-readonly
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Role: Full admin in dev namespace only
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: namespace-admin
+  namespace: dev
+rules:
+# Full access to all resources in namespace
+- apiGroups: ["", "apps", "batch", "networking.k8s.io", "autoscaling"]
+  resources: ["*"]
+  verbs: ["*"]
+
+---
+# RoleBinding: developers group → namespace-admin role in dev namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developers-admin-binding
+  namespace: dev
+subjects:
+- kind: Group
+  name: developers
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: namespace-admin
+  apiGroup: rbac.authorization.k8s.io
