@@ -76,6 +76,12 @@ module "vpc" {
   vpc_cidr           = "10.0.0.0/16"
   single_nat_gateway = true # Cost optimization for dev
   enable_s3_endpoint = true # FREE - reduces NAT costs
+
+  # OPTIONAL: Interface endpoints (cost ~$7.50/month each)
+  # Uncomment these for production or when you want traffic to stay in AWS network:
+  # enable_ecr_endpoints = true  # ~$15/month (2 endpoints)
+  # enable_logs_endpoint = true  # ~$7.50/month
+  # enable_sts_endpoint  = true  # ~$7.50/month
 }
 
 # =============================================================================

@@ -91,6 +91,31 @@ output "s3_endpoint_id" {
   value       = var.enable_s3_endpoint ? aws_vpc_endpoint.s3[0].id : null
 }
 
+output "vpc_endpoint_sg_id" {
+  description = "Security group ID for VPC interface endpoints"
+  value       = length(aws_security_group.vpc_endpoints) > 0 ? aws_security_group.vpc_endpoints[0].id : null
+}
+
+output "ecr_api_endpoint_id" {
+  description = "ECR API VPC Endpoint ID"
+  value       = var.enable_ecr_endpoints ? aws_vpc_endpoint.ecr_api[0].id : null
+}
+
+output "ecr_dkr_endpoint_id" {
+  description = "ECR DKR VPC Endpoint ID"
+  value       = var.enable_ecr_endpoints ? aws_vpc_endpoint.ecr_dkr[0].id : null
+}
+
+output "logs_endpoint_id" {
+  description = "CloudWatch Logs VPC Endpoint ID"
+  value       = var.enable_logs_endpoint ? aws_vpc_endpoint.logs[0].id : null
+}
+
+output "sts_endpoint_id" {
+  description = "STS VPC Endpoint ID"
+  value       = var.enable_sts_endpoint ? aws_vpc_endpoint.sts[0].id : null
+}
+
 # -----------------------------------------------------------------------------
 # AVAILABILITY ZONE OUTPUTS
 # -----------------------------------------------------------------------------
@@ -99,3 +124,4 @@ output "azs" {
   description = "Availability zones used"
   value       = var.azs
 }
+

@@ -213,3 +213,111 @@ resource "aws_vpc_endpoint" "s3" {
     Name = "${local.name}-s3-endpoint"
   })
 }
+
+# =============================================================================
+# SECURITY GROUP FOR VPC INTERFACE ENDPOINTS
+# =============================================================================
+
+resource "aws_security_group" "vpc_endpoints" {
+  count = (var.enable_ecr_endpoints || var.enable_logs_endpoint || var.enable_sts_endpoint) ? 1 : 0
+
+  name        = "${local.name}-vpc-endpoints-sg"
+  description = "Security group for VPC interface endpoints"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "HTTPS from VPC"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.main.cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name}-vpc-endpoints-sg"
+  })
+}
+
+# =============================================================================
+# ECR API VPC ENDPOINT (Interface)
+# =============================================================================
+
+resource "aws_vpc_endpoint" "ecr_api" {
+  count = var.enable_ecr_endpoints ? 1 : 0
+
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints[0].id]
+  private_dns_enabled = true
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name}-ecr-api-endpoint"
+  })
+}
+
+# =============================================================================
+# ECR DKR VPC ENDPOINT (Interface - Docker Registry)
+# =============================================================================
+
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  count = var.enable_ecr_endpoints ? 1 : 0
+
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints[0].id]
+  private_dns_enabled = true
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name}-ecr-dkr-endpoint"
+  })
+}
+
+# =============================================================================
+# CLOUDWATCH LOGS VPC ENDPOINT (Interface)
+# =============================================================================
+
+resource "aws_vpc_endpoint" "logs" {
+  count = var.enable_logs_endpoint ? 1 : 0
+
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.logs"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints[0].id]
+  private_dns_enabled = true
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name}-logs-endpoint"
+  })
+}
+
+# =============================================================================
+# STS VPC ENDPOINT (Interface - for IRSA)
+# =============================================================================
+
+resource "aws_vpc_endpoint" "sts" {
+  count = var.enable_sts_endpoint ? 1 : 0
+
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.sts"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints[0].id]
+  private_dns_enabled = true
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name}-sts-endpoint"
+  })
+}
+

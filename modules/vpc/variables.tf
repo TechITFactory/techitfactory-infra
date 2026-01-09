@@ -110,3 +110,40 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# -----------------------------------------------------------------------------
+# VPC INTERFACE ENDPOINTS (OPTIONAL)
+# Cost: ~$7.50/month each. Enable for production or high traffic.
+# -----------------------------------------------------------------------------
+
+variable "enable_ecr_endpoints" {
+  description = "Enable ECR VPC endpoints (reduces NAT costs for image pulls)"
+  type        = bool
+  default     = false
+
+  # COST vs SAVINGS:
+  # - ECR endpoints: ~$15/month (2 endpoints: api + dkr)
+  # - NAT data transfer: ~$0.045/GB
+  # - If pulling >330GB/month of images, endpoints save money
+  # - For dev: keep false to save cost
+  # - For prod: enable for security (traffic stays in AWS network)
+}
+
+variable "enable_logs_endpoint" {
+  description = "Enable CloudWatch Logs VPC endpoint"
+  type        = bool
+  default     = false
+
+  # Useful for container logs going to CloudWatch
+  # Cost: ~$7.50/month
+}
+
+variable "enable_sts_endpoint" {
+  description = "Enable STS VPC endpoint (for IRSA token exchange)"
+  type        = bool
+  default     = false
+
+  # Required for IRSA to work without NAT Gateway
+  # Cost: ~$7.50/month
+}
+
