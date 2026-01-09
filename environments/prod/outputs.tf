@@ -32,10 +32,9 @@ output "nat_public_ips" {
 }
 
 # -----------------------------------------------------------------------------
-# EKS OUTPUTS - UNCOMMENT WHEN EKS IS ENABLED
+# EKS OUTPUTS
 # -----------------------------------------------------------------------------
 
-/*
 output "cluster_name" {
   description = "EKS cluster name"
   value       = module.eks.cluster_name
@@ -46,11 +45,30 @@ output "cluster_endpoint" {
   value       = module.eks.cluster_endpoint
 }
 
+output "cluster_version" {
+  description = "Kubernetes version"
+  value       = module.eks.cluster_version
+}
+
 output "kubeconfig_command" {
   description = "Run this to configure kubectl"
   value       = module.eks.kubeconfig_command
 }
-*/
+
+output "cluster_autoscaler_role_arn" {
+  description = "IAM role ARN for Cluster Autoscaler"
+  value       = module.eks.cluster_autoscaler_role_arn
+}
+
+output "oidc_provider_arn" {
+  description = "OIDC provider ARN for IRSA"
+  value       = module.eks.oidc_provider_arn
+}
+
+output "alb_controller_role_arn" {
+  description = "IAM role ARN for AWS Load Balancer Controller"
+  value       = module.eks.alb_controller_role_arn
+}
 
 # -----------------------------------------------------------------------------
 # ECR OUTPUTS - UNCOMMENT WHEN ECR IS ENABLED

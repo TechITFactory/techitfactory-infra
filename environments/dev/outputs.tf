@@ -3,7 +3,7 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# VPC OUTPUTS (Story 3.1)
+# VPC OUTPUTS (Story 3.1) ✅
 # -----------------------------------------------------------------------------
 
 output "vpc_id" {
@@ -32,10 +32,9 @@ output "nat_public_ips" {
 }
 
 # -----------------------------------------------------------------------------
-# EKS OUTPUTS (Story 4.1) - UNCOMMENT WHEN EKS IS ENABLED
+# EKS OUTPUTS (Story 4.1) ✅
 # -----------------------------------------------------------------------------
 
-/*
 output "cluster_name" {
   description = "EKS cluster name"
   value       = module.eks.cluster_name
@@ -70,7 +69,6 @@ output "alb_controller_role_arn" {
   description = "IAM role ARN for AWS Load Balancer Controller"
   value       = module.eks.alb_controller_role_arn
 }
-*/
 
 # -----------------------------------------------------------------------------
 # ECR OUTPUTS (Story 6.1) - UNCOMMENT WHEN ECR IS ENABLED

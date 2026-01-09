@@ -91,10 +91,9 @@ module "vpc" {
 }
 
 # =============================================================================
-# EKS MODULE - PRODUCTION CONFIGURATION (UNCOMMENT WHEN READY)
+# EKS MODULE - PRODUCTION CONFIGURATION
 # =============================================================================
 
-/*
 module "eks" {
   source = "../../modules/eks"
 
@@ -110,16 +109,15 @@ module "eks" {
   node_desired_size   = 3
   node_min_size       = 3
   node_max_size       = 10
-  node_instance_types = ["t3.large"]  # Larger than dev
-  node_capacity_type  = "ON_DEMAND"   # No spot for prod
-  node_disk_size      = 100           # More storage
+  node_instance_types = ["t3.large"] # Larger than dev
+  node_capacity_type  = "ON_DEMAND"  # No spot for prod
+  node_disk_size      = 100          # More storage
 
   # Add-ons
   enable_ebs_csi_driver     = true
   enable_cluster_autoscaler = true
   enable_alb_controller     = true
 }
-*/
 
 # =============================================================================
 # ECR MODULE - PRODUCTION (UNCOMMENT WHEN READY)

@@ -3,21 +3,19 @@
 # =============================================================================
 #
 # DEPLOYMENT PHASES:
-# - Story 3.1: VPC only (~$32/month)
-# - Story 4.1: Add EKS (+$132/month)
+# - Story 3.1: VPC only (~$32/month) ✅ DONE
+# - Story 4.1: Add EKS (+$147/month) ← CURRENT
 # - Story 6.1: Add ECR (~free, storage costs only)
 #
-# CURRENT PHASE: VPC only
+# CURRENT PHASE: VPC + EKS
 # =============================================================================
 
 terraform {
   required_version = ">= 1.6.0"
 
   # -------------------------------------------------------------------------
-  # REMOTE BACKEND - UNCOMMENT AND UPDATE AFTER BOOTSTRAP
+  # REMOTE BACKEND
   # -------------------------------------------------------------------------
-  # Get values from: cd ../bootstrap && terraform output
-
   backend "s3" {
     bucket         = "techitfactory-tfstate-8bf605bd"
     key            = "environments/dev/terraform.tfstate"
@@ -64,7 +62,7 @@ locals {
 }
 
 # =============================================================================
-# VPC MODULE (Story 3.1)
+# VPC MODULE (Story 3.1) ✅
 # =============================================================================
 
 module "vpc" {
@@ -84,10 +82,9 @@ module "vpc" {
 }
 
 # =============================================================================
-# EKS MODULE (Story 4.1) - UNCOMMENT WHEN READY
+# EKS MODULE (Story 4.1) ✅
 # =============================================================================
 
-/*
 module "eks" {
   source = "../../modules/eks"
 
@@ -112,7 +109,6 @@ module "eks" {
   enable_cluster_autoscaler = true
   enable_alb_controller     = true
 }
-*/
 
 # =============================================================================
 # ECR MODULE (Story 6.1) - UNCOMMENT WHEN READY
