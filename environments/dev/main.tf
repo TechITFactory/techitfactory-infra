@@ -94,7 +94,7 @@ module "eks" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnet_ids
 
-  cluster_version = "1.28"
+  cluster_version = "1.31"
 
   # Node configuration
   node_desired_size   = 2
