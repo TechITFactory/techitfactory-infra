@@ -17,7 +17,7 @@ terraform {
   # REMOTE BACKEND
   # -------------------------------------------------------------------------
   backend "s3" {
-    bucket         = "techitfactory-tfstate-8bf605bd"
+    bucket         = "techitfactory-tfstate-e140d259"
     key            = "environments/dev/terraform.tfstate"
     region         = "ap-south-1"
     encrypt        = true
