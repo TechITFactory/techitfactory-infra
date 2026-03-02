@@ -4,10 +4,10 @@
 #
 # DEPLOYMENT PHASES:
 # - Story 3.1: VPC only (~$32/month) ✅ DONE
-# - Story 4.1: Add EKS (+$147/month) ← CURRENT
-# - Story 6.1: Add ECR (~free, storage costs only)
+# - Story 4.1: Add EKS (+$147/month) ✅ DONE
+# - Story 6.1: Add ECR (~free, storage costs only) ✅ DONE
 #
-# CURRENT PHASE: VPC + EKS
+# CURRENT PHASE: VPC + EKS + ECR
 # =============================================================================
 
 terraform {
@@ -111,10 +111,9 @@ module "eks" {
 }
 
 # =============================================================================
-# ECR MODULE (Story 6.1) - UNCOMMENT WHEN READY
+# ECR MODULE (Story 6.1) ✅
 # =============================================================================
 
-/*
 module "ecr" {
   source = "../../modules/ecr"
 
@@ -133,4 +132,3 @@ module "ecr" {
   lifecycle_policy_count = 30
   scan_on_push           = true
 }
-*/
