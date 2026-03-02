@@ -17,10 +17,11 @@ terraform {
   # REMOTE BACKEND
   # -------------------------------------------------------------------------
   backend "s3" {
-    bucket         = "techitfactory-tfstate-e140d259"
+    bucket         = "techitfactory-tfstate-207af7a0"
     key            = "environments/dev/terraform.tfstate"
     region         = "ap-south-1"
     encrypt        = true
+    kms_key_id     = "arn:aws:kms:ap-south-1:535002890483:key/a915ef7b-21f1-4a97-be00-1e939cf9b66c"
     dynamodb_table = "techitfactory-tflock"
   }
 
