@@ -210,6 +210,56 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
         Resource = "*"
       },
       # -----------------------------------------------------------------
+      # ECR PERMISSIONS
+      # -----------------------------------------------------------------
+      # Required by:
+      #   - CI workflow (ci.yml): docker build + push to ECR
+      #   - release.yml: docker build + push release tags
+      #   - Trivy scan: pull image from ECR for scanning
+      #   - Terraform: create/delete/configure ECR repositories
+      {
+        Sid    = "ECRRepositoryManagement"
+        Effect = "Allow"
+        Action = [
+          "ecr:CreateRepository",
+          "ecr:DeleteRepository",
+          "ecr:DescribeRepositories",
+          "ecr:PutLifecyclePolicy",
+          "ecr:GetLifecyclePolicy",
+          "ecr:DeleteLifecyclePolicy",
+          "ecr:PutImageScanningConfiguration",
+          "ecr:PutImageTagMutability",
+          "ecr:ListTagsForResource",
+          "ecr:TagResource",
+          "ecr:UntagResource"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ECRImagePush"
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ECRImageOperations"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+          "ecr:PutImage",
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:DescribeImages",
+          "ecr:ListImages"
+        ]
+        Resource = "arn:aws:ecr:ap-south-1:535002890483:repository/techitfactory/*"
+      },
+      # -----------------------------------------------------------------
       # ROUTE53 & ACM PERMISSIONS
       # -----------------------------------------------------------------
       # For DNS and TLS certificate management
