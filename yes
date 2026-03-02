@@ -1,0 +1,88 @@
+{
+    "Deleted": [
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "ViOfjmnyV6DqzkRz0mmS_lfz7zQeiTyS"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "BRaG39N8vrEcXEDnhyx9TkOaQ3Sto.ur"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "DCMLLaFWn59CAASJgM78.wFtM8Np7fWc"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "PsWcfAuJxW6pZk58iO3Hu9B6q1lwj_lO"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "tkggxuyU.v6qTLwXtnFL9jtPd6vk7uEF"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "XnWvzL6noDMUbtVrY2TnTeJyG.F1Juxn"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "sGVC29UFV.FEP11Z6XCTv.rgL4YojvnR"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "DEL9CgTag4iCwIoUuMNQVNqpWVq_FgE1"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "Tn8S_.4j1RMDc6Xq.9tnspzK29TaeBhh"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "r2qFMbsCMOj28IZqgrlyecNqpu1QEEJV"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "Qiyy2gsJv4.R2286_UMz_UkMFdyvjZo9"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "c08i5wc34MUhk6uPupJW6wjXG6dN1mI4"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "2fnH5gnQZPj35OVaompDKOdbYvWAUeZx"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "qE_3cu.904PET71zvE2xu_0s.5V07K3Z"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": ".DyxmiKb.fU1RH5x.gkG2VXVg0x0b5xc"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "9X3YYk2ycEpIInye9L09ESIfeutxEb4T"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "B5LfFtNNklddKT5oFySnISHTVEhhCJOh"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "p1ku7SOmV2luVRqt6y33t1FaP.qCIzx6"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "ptYY63MBpRfaz1yV0_XDkYz3jBnNoN4P"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "wdIw4WxpZnJ6G71kKogbQQ3D3CV7awtE"
+        },
+        {
+            "Key": "environments/dev/terraform.tfstate",
+            "VersionId": "Uxipcvsu3m4ZVCAJz99DSaZhuIhSrDhO"
+        }
+    ]
+}

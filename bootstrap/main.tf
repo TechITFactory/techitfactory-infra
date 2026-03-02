@@ -138,6 +138,9 @@ resource "aws_kms_alias" "terraform_state" {
 
 resource "aws_s3_bucket" "terraform_state" {
   bucket = local.bucket_name # techitfactory-tfstate-<random>
+  # Required for teardown of versioned buckets (lab/dev workflows).
+  # Terraform will remove all object versions/delete markers before deleting bucket.
+  force_destroy = true
 
   # LIFECYCLE PROTECTION
   # Set to 'true' in production to prevent accidental deletion
