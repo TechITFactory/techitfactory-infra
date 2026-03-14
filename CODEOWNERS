@@ -1,0 +1,6 @@
+# Infrastructure team owns everything
+* @TechITFactory/infra-team
+
+# Security review for IAM changes
+modules/*/iam*.tf @TechITFactory/security-team
+bootstrap/ @TechITFactory/security-team

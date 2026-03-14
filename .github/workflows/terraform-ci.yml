@@ -1,0 +1,600 @@
+# =============================================================================
+# TERRAFORM CI/CD — PRODUCTION-GRADE
+# =============================================================================
+#
+# PIPELINE ARCHITECTURE (Industry Standard 2025):
+#
+#  Pull Request                    Merge to main [deploy]      Scheduled (Monday)
+#  ──────────────────              ──────────────────────      ──────────────────
+#  fmt → validate → plan           fmt → validate → APPLY      plan (drift detect)
+#  ↳ PR comment with plan diff     ↳ bootstrap  (if changed)   ↳ alert on diff
+#                                  ↳ dev env    (if changed)
+#                                  ↳ prod env   (if changed, needs approval)
+#
+# TRIGGER KEYWORD: Push to main only runs pipeline if commit message contains [deploy]
+#   git commit -m "feat: update EKS version [deploy]"
+#   PRs, scheduled drift detection, and workflow_dispatch always run regardless.
+#
+# THREE SEPARATE JOB CHAINS (one per environment):
+#   bootstrap/  → jobs: tf-bootstrap-plan  / tf-bootstrap-apply
+#   environments/dev/  → jobs: tf-dev-plan / tf-dev-apply
+#   environments/prod/ → jobs: tf-prod-plan / tf-prod-apply  ← GitHub env approval
+#
+# WHY THIS DESIGN:
+#   - Separate jobs = separate blast radius. A prod change can't accidentally touch dev.
+#   - Path filters = only runs when *that* environment's files change.
+#   - Apply jobs re-plan immediately before applying to avoid stale-plan errors.
+#   - concurrency: cancel-in-progress: false = Terraform runs are NEVER cancelled
+#     (a mid-run cancel leaves state locked and resources in unknown state).
+#   - Drift detection = scheduled plan that alerts if live infra diverges from git.
+# =============================================================================
+
+name: Terraform CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Drift detection: every Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Which environment to target'
+        required: true
+        type: choice
+        options: [dev, prod, bootstrap]
+      action:
+        description: 'Plan or Apply'
+        required: true
+        type: choice
+        options: [plan, apply]
+
+# CRITICAL: Never cancel in-progress Terraform runs.
+# A cancelled apply leaves state locked and resources in an unknown state.
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write      # OIDC → AWS credentials
+  contents: read       # Checkout code
+  pull-requests: write # Comment plan on PR
+
+env:
+  AWS_REGION: ap-south-1
+  TF_VERSION: 1.9.8     # Pin to specific version — avoid unexpected breaking changes
+  TF_INPUT: false        # Never prompt for input (CI is non-interactive)
+  TF_IN_AUTOMATION: true # Suppresses verbose "Running in automation" warnings
+
+# =============================================================================
+# REUSABLE: DETECT WHICH ENVIRONMENTS CHANGED
+# =============================================================================
+jobs:
+  detect-changes:
+    name: Detect Changed Environments
+    runs-on: ubuntu-latest
+    # Push to main only runs when commit message contains [deploy].
+    # PRs, scheduled drift detection, and manual dispatch always run.
+    if: |
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      contains(github.event.head_commit.message, '[deploy]')
+    outputs:
+      bootstrap: ${{ steps.changes.outputs.bootstrap }}
+      dev: ${{ steps.changes.outputs.dev }}
+      prod: ${{ steps.changes.outputs.prod }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            bootstrap:
+              - 'bootstrap/**'
+            dev:
+              - 'environments/dev/**'
+              - 'modules/**'
+            prod:
+              - 'environments/prod/**'
+              - 'modules/**'
+
+  # ===========================================================================
+  # BOOTSTRAP — Plan
+  # ===========================================================================
+  tf-bootstrap-plan:
+    name: "Bootstrap: Plan"
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.bootstrap == 'true' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'bootstrap')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bootstrap
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive
+        # Fail on fmt errors — messy formatting is a code review issue
+        # Remove the comment below if you want strict enforcement
+        continue-on-error: false
+
+      - name: Terraform Init
+        id: init
+        run: terraform init -upgrade
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -no-color \
+            -input=false \
+            -out=tfplan.binary \
+            2>&1 | tee plan.txt
+        # Note: tee captures output for PR comment AND lets the step stream output
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-bootstrap-${{ github.sha }}
+          path: bootstrap/tfplan.binary
+          retention-days: 7
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('bootstrap/plan.txt', 'utf8');
+            const truncated = plan.length > 60000
+              ? plan.substring(0, 60000) + '\n\n... (truncated — see Actions tab for full output)'
+              : plan;
+
+            const body = `## 🏗️ Terraform Plan — \`bootstrap/\`
+
+            | Step | Status |
+            |------|--------|
+            | 🖌 fmt | \`${{ steps.fmt.outcome }}\` |
+            | ⚙️ init | \`${{ steps.init.outcome }}\` |
+            | 🤖 validate | \`${{ steps.validate.outcome }}\` |
+            | 📋 plan | \`${{ steps.plan.outcome }}\` |
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`hcl
+            ${truncated}
+            \`\`\`
+            </details>
+
+            *Pushed by: @${{ github.actor }} | Action: \`${{ github.event_name }}\`*`;
+
+            // Delete previous bot comments to keep PR clean
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            for (const c of comments.data) {
+              if (c.user.type === 'Bot' && c.body.includes('bootstrap/')) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: c.id,
+                });
+              }
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body,
+            });
+
+  # ===========================================================================
+  # BOOTSTRAP — Apply (only on merge to main)
+  # ===========================================================================
+  tf-bootstrap-apply:
+    name: "Bootstrap: Apply"
+    needs: tf-bootstrap-plan
+    if: |
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.tf-bootstrap-plan.result == 'success'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bootstrap
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init -upgrade
+
+      - name: Terraform Plan + Apply
+        # Re-plan immediately before applying so the plan is never stale.
+        # A saved plan artifact can go stale if any other job touches state
+        # between the plan job and the apply job (e.g., a prior failed apply).
+        run: |
+          terraform plan -out=tfplan.binary -input=false -no-color
+          terraform apply -input=false -auto-approve tfplan.binary
+
+      - name: Summary
+        run: |
+          echo "### ✅ Bootstrap Applied" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # DEV ENVIRONMENT — Plan
+  # ===========================================================================
+  tf-dev-plan:
+    name: "Dev: Plan"
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.dev == 'true' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: environments/dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive ../../
+
+      - name: Terraform Init
+        id: init
+        run: terraform init -upgrade
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -no-color \
+            -input=false \
+            -out=tfplan.binary \
+            2>&1 | tee plan.txt
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-dev-${{ github.sha }}
+          path: environments/dev/tfplan.binary
+          retention-days: 7
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('environments/dev/plan.txt', 'utf8');
+            const truncated = plan.length > 60000
+              ? plan.substring(0, 60000) + '\n\n... (truncated — see Actions tab for full output)'
+              : plan;
+
+            const body = `## 🌿 Terraform Plan — \`environments/dev/\`
+
+            | Step | Status |
+            |------|--------|
+            | 🖌 fmt | \`${{ steps.fmt.outcome }}\` |
+            | ⚙️ init | \`${{ steps.init.outcome }}\` |
+            | 🤖 validate | \`${{ steps.validate.outcome }}\` |
+            | 📋 plan | \`${{ steps.plan.outcome }}\` |
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`hcl
+            ${truncated}
+            \`\`\`
+            </details>
+
+            *Pushed by: @${{ github.actor }} | Action: \`${{ github.event_name }}\`*`;
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            for (const c of comments.data) {
+              if (c.user.type === 'Bot' && c.body.includes('environments/dev/')) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: c.id,
+                });
+              }
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body,
+            });
+
+      - name: Drift Alert (scheduled only)
+        if: github.event_name == 'schedule'
+        run: |
+          # On scheduled runs, fail if there's drift (plan shows changes)
+          if grep -q "No changes\." plan.txt; then
+            echo "✅ No drift detected in dev environment"
+          else
+            echo "⚠️ DRIFT DETECTED in dev environment — infra diverged from Git!"
+            echo "Run: terraform plan in environments/dev/ to see details"
+            exit 1
+          fi
+
+  # ===========================================================================
+  # DEV ENVIRONMENT — Apply (only on merge to main)
+  # ===========================================================================
+  tf-dev-apply:
+    name: "Dev: Apply"
+    needs: tf-dev-plan
+    if: |
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.tf-dev-plan.result == 'success'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: environments/dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init -upgrade
+
+      - name: Terraform Plan + Apply
+        # Re-plan immediately before applying so the plan is never stale.
+        run: |
+          terraform plan -out=tfplan.binary -input=false -no-color
+          terraform apply -input=false -auto-approve tfplan.binary
+
+      - name: Summary
+        run: |
+          echo "### ✅ Dev Infrastructure Applied" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          terraform output -json 2>/dev/null | jq -r 'to_entries[] | "- **\(.key):** \(.value.value)"' >> $GITHUB_STEP_SUMMARY || true
+
+  # ===========================================================================
+  # PROD ENVIRONMENT — Plan (runs AFTER dev apply succeeds)
+  # ===========================================================================
+  tf-prod-plan:
+    name: "Prod: Plan"
+    needs: [detect-changes, tf-dev-apply]
+    # Run on: PR with prod changes, scheduled drift check, manual dispatch
+    # On merge: only if dev apply passed first (needs tf-dev-apply)
+    if: |
+      always() &&
+      (
+        needs.detect-changes.outputs.prod == 'true' ||
+        github.event_name == 'schedule' ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
+      ) &&
+      (needs.tf-dev-apply.result == 'success' || needs.tf-dev-apply.result == 'skipped')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: environments/prod
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive ../../
+
+      - name: Terraform Init
+        id: init
+        run: terraform init -upgrade
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -no-color \
+            -input=false \
+            -out=tfplan.binary \
+            2>&1 | tee plan.txt
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-prod-${{ github.sha }}
+          path: environments/prod/tfplan.binary
+          retention-days: 7
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('environments/prod/plan.txt', 'utf8');
+            const truncated = plan.length > 60000
+              ? plan.substring(0, 60000) + '\n\n... (truncated — see Actions tab for full output)'
+              : plan;
+
+            const body = `## 🚀 Terraform Plan — \`environments/prod/\`
+            > ⚠️ **This change affects PRODUCTION infrastructure. Review carefully.**
+
+            | Step | Status |
+            |------|--------|
+            | 🖌 fmt | \`${{ steps.fmt.outcome }}\` |
+            | ⚙️ init | \`${{ steps.init.outcome }}\` |
+            | 🤖 validate | \`${{ steps.validate.outcome }}\` |
+            | 📋 plan | \`${{ steps.plan.outcome }}\` |
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`hcl
+            ${truncated}
+            \`\`\`
+            </details>
+
+            *Pushed by: @${{ github.actor }} | Action: \`${{ github.event_name }}\`*`;
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            for (const c of comments.data) {
+              if (c.user.type === 'Bot' && c.body.includes('environments/prod/')) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: c.id,
+                });
+              }
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body,
+            });
+
+      - name: Drift Alert (scheduled only)
+        if: github.event_name == 'schedule'
+        run: |
+          if grep -q "No changes\." plan.txt; then
+            echo "✅ No drift detected in prod environment"
+          else
+            echo "⚠️ DRIFT DETECTED in prod environment — investigate immediately!"
+            exit 1
+          fi
+
+  # ===========================================================================
+  # PROD ENVIRONMENT — Apply (requires GitHub Environment approval)
+  # ===========================================================================
+  tf-prod-apply:
+    name: "Prod: Apply"
+    needs: tf-prod-plan
+    # Only apply on merge to main, never on PRs or scheduled runs
+    if: |
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.tf-prod-plan.result == 'success'
+    runs-on: ubuntu-latest
+    # ⚠️ REQUIRES: GitHub repo → Settings → Environments → "production-infra"
+    # Add required reviewers so a human approves before prod infra changes
+    environment: production-infra
+    defaults:
+      run:
+        working-directory: environments/prod
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init -upgrade
+
+      - name: Terraform Plan + Apply
+        # Re-plan immediately before applying so the plan is never stale.
+        # For prod: a human has already approved via GitHub Environment gate.
+        # The fresh plan runs AFTER approval — within the approved window.
+        run: |
+          terraform plan -out=tfplan.binary -input=false -no-color
+          terraform apply -input=false -auto-approve tfplan.binary
+
+      - name: Summary
+        run: |
+          echo "### ✅ Production Infrastructure Applied" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          terraform output -json 2>/dev/null | jq -r 'to_entries[] | "- **\(.key):** \(.value.value)"' >> $GITHUB_STEP_SUMMARY || true

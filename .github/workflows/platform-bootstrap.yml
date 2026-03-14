@@ -1,0 +1,223 @@
+# =============================================================================
+# PLATFORM BOOTSTRAP — SPRINT 5
+# =============================================================================
+#
+# PURPOSE:
+#   Run ONCE after "terraform apply" provisions the EKS cluster.
+#   Installs ArgoCD on the cluster and applies the root App-of-Apps.
+#   After this job, ArgoCD owns all subsequent platform and app deployments.
+#
+# FLOW:
+#   workflow_dispatch (you)
+#       │
+#       ├─ 1. Configure AWS (OIDC) + kubeconfig
+#       ├─ 2. Helm install ArgoCD
+#       ├─ 3. Configure repo credentials (private gitops repo support)
+#       ├─ 4. kubectl apply root-app.yaml  ← App-of-Apps bootstrap
+#       └─ 5. ArgoCD syncs apps/platform/ → installs NGINX Ingress, CA, Metrics-server
+#             ArgoCD syncs apps/services/ → deploys microservices
+#             ArgoCD syncs apps/monitoring.yaml → installs Prometheus stack
+#
+# RE-ENTRANT: Safe to re-run. Helm upgrade --install is idempotent.
+#
+# NEXT STEP after this workflow succeeds:
+#   Run techitfactory-app "Build All Services" workflow to seed ECR images.
+#   ArgoCD will pick up the new image tags automatically.
+# =============================================================================
+
+name: Platform Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options: [dev, prod]
+        default: dev
+      gitops_repo:
+        description: 'GitOps repo (org/repo)'
+        required: false
+        default: 'YOUR_GITHUB_ORG/techitfactory-gitops'
+      argocd_version:
+        description: 'ArgoCD Helm chart version'
+        required: false
+        default: '7.8.14'
+
+# Never cancel a bootstrap in progress — partial state is hard to recover.
+concurrency:
+  group: platform-bootstrap-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write  # Required for OIDC → AWS
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+
+jobs:
+  bootstrap:
+    name: Bootstrap Platform (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. CHECKOUT GITOPS REPO
+      # -----------------------------------------------------------------------
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.gitops_repo }}
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops
+
+      # -----------------------------------------------------------------------
+      # 2. AUTHENTICATE TO AWS VIA OIDC (no static keys)
+      # -----------------------------------------------------------------------
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # -----------------------------------------------------------------------
+      # 3. CONFIGURE KUBECTL FOR EKS
+      # -----------------------------------------------------------------------
+      - name: Update kubeconfig
+        run: |
+          CLUSTER_NAME="techitfactory-${{ inputs.environment }}"
+          aws eks update-kubeconfig \
+            --name "${CLUSTER_NAME}" \
+            --region "${{ env.AWS_REGION }}"
+          kubectl cluster-info
+
+      # -----------------------------------------------------------------------
+      # 4. INSTALL TOOLS
+      # -----------------------------------------------------------------------
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.17.0'
+
+      - name: Add Helm repos
+        run: |
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm repo update
+
+      # -----------------------------------------------------------------------
+      # 5. INSTALL ARGOCD
+      # ArgoCD is installed with ClusterIP (no external LB yet).
+      # The ALB Controller is installed by ArgoCD after bootstrap, then the
+      # ArgoCD ingress can be enabled via GitOps.
+      # -----------------------------------------------------------------------
+      - name: Install / upgrade ArgoCD
+        run: |
+          kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+
+          helm upgrade --install argocd argo/argo-cd \
+            --namespace argocd \
+            --version "${{ inputs.argocd_version }}" \
+            --values gitops/platform/argocd/values.yaml \
+            --wait \
+            --timeout 8m \
+            --atomic
+
+          echo "ArgoCD pods:"
+          kubectl get pods -n argocd
+
+      # -----------------------------------------------------------------------
+      # 6. CONFIGURE GITOPS REPO CREDENTIALS
+      # Allows ArgoCD to pull from a private repository.
+      # The secret must carry the label argocd.argoproj.io/secret-type=repository.
+      # -----------------------------------------------------------------------
+      - name: Configure ArgoCD repo credentials
+        env:
+          GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+          GITOPS_REPO: ${{ inputs.gitops_repo }}
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: gitops-repo-creds
+            namespace: argocd
+            labels:
+              argocd.argoproj.io/secret-type: repository
+          stringData:
+            type: git
+            url: https://github.com/${GITOPS_REPO}.git
+            username: x-access-token
+            password: "${GITOPS_TOKEN}"
+          EOF
+
+      # -----------------------------------------------------------------------
+      # 7. APPLY TECHITFACTORY NAMESPACE
+      # -----------------------------------------------------------------------
+      - name: Apply namespace
+        run: |
+          kubectl apply -f gitops/environments/${{ inputs.environment }}/namespace.yaml
+
+      # -----------------------------------------------------------------------
+      # 7b. CREATE APP SECRETS
+      # app-secrets holds the JWT signing key used by api-gateway and user-service.
+      # It is NOT stored in Git — generated fresh on each bootstrap.
+      # If the secret already exists, this step is a no-op (--dry-run=client trick).
+      # Runbook reference: sprint3/S6.2_APP_OF_APPS.md and S6.3_BUILD_PUSH_IMAGES.md
+      # -----------------------------------------------------------------------
+      - name: Create app-secrets
+        run: |
+          # Only create if it doesn't already exist
+          if kubectl get secret app-secrets -n techitfactory &>/dev/null; then
+            echo "app-secrets already exists — skipping"
+          else
+            kubectl create secret generic app-secrets \
+              --from-literal=jwt-secret="$(openssl rand -base64 32)" \
+              -n techitfactory
+            echo "app-secrets created"
+          fi
+
+      # -----------------------------------------------------------------------
+      # 8. BOOTSTRAP APP-OF-APPS
+      # Applying root-app.yaml is the only manual kubectl apply we ever do.
+      # After this, ArgoCD manages everything declaratively.
+      # -----------------------------------------------------------------------
+      - name: Apply root App-of-Apps
+        run: |
+          kubectl apply -f gitops/apps/root-app.yaml
+          echo ""
+          echo "Root app applied. ArgoCD will now:"
+          echo "  → Sync apps/platform/ → install ALB controller, CA, metrics-server"
+          echo "  → Sync apps/services/ → deploy microservices"
+          echo "  → Sync apps/monitoring.yaml → install Prometheus + Grafana"
+
+      # -----------------------------------------------------------------------
+      # 9. WAIT & VERIFY
+      # -----------------------------------------------------------------------
+      - name: Wait for ArgoCD server
+        run: |
+          kubectl rollout status deployment/argocd-server \
+            -n argocd \
+            --timeout=120s
+
+      - name: Print access instructions
+        run: |
+          CLUSTER_NAME="techitfactory-${{ inputs.environment }}"
+          echo "============================================================"
+          echo "  PLATFORM BOOTSTRAP COMPLETE"
+          echo "============================================================"
+          echo ""
+          echo "ArgoCD initial admin password:"
+          kubectl -n argocd get secret argocd-initial-admin-secret \
+            -o jsonpath="{.data.password}" | base64 -d 2>/dev/null || \
+            echo "(secret not yet created — ArgoCD may still be initializing)"
+          echo ""
+          echo "To access ArgoCD UI:"
+          echo "  aws eks update-kubeconfig --name ${CLUSTER_NAME} --region ${{ env.AWS_REGION }}"
+          echo "  kubectl port-forward svc/argocd-server -n argocd 8080:443"
+          echo "  Open: https://localhost:8080"
+          echo ""
+          echo "Next step: Run 'Build All Services' workflow in techitfactory-app"
+          echo "============================================================"
